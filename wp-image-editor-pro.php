@@ -97,10 +97,13 @@ function ppe_render_settings_page() {
     // Check if form has been submitted
     if (isset($_POST['ppe_api_key_nonce']) && wp_verify_nonce($_POST['ppe_api_key_nonce'], 'ppe_api_key_save')) {
         $api_key = sanitize_text_field($_POST['ppe_api_key'] ?? '');
+        $api_model = sanitize_text_field($_POST['ppe_api_model'] ?? '');
         update_option('ppe_api_key', $api_key);
-        echo '<div class="updated"><p>' . esc_html__('API key saved.', 'pocket-photo-editor') . '</p></div>';
+        update_option('ppe_api_model', $api_model);
+        echo '<div class="updated"><p>' . esc_html__('Settings saved.', 'pocket-photo-editor') . '</p></div>';
     }
     $current_key = get_option('ppe_api_key', '');
+    $current_model = get_option('ppe_api_model', 'gemini-3-pro-image-preview');
     ?>
     <div class="wrap">
         <h1><?php esc_html_e('AI Image Editor Settings', 'pocket-photo-editor'); ?></h1>
@@ -112,6 +115,13 @@ function ppe_render_settings_page() {
                     <td>
                         <input name="ppe_api_key" type="text" id="ppe_api_key" value="<?php echo esc_attr($current_key); ?>" class="regular-text" />
                         <p class="description"><?php esc_html_e('Enter your Gemini API key here.', 'pocket-photo-editor'); ?></p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="ppe_api_model"><?php esc_html_e('Gemini Model', 'pocket-photo-editor'); ?></label></th>
+                    <td>
+                        <input name="ppe_api_model" type="text" id="ppe_api_model" value="<?php echo esc_attr($current_model); ?>" class="regular-text" />
+                        <p class="description"><?php esc_html_e('Enter the Gemini model to use, for example gemini-3-pro-image-preview.', 'pocket-photo-editor'); ?></p>
                     </td>
                 </tr>
             </table>
@@ -1427,7 +1437,10 @@ function ppe_handle_ajax() {
             $api_key = getenv('GEMINI_API_KEY') ?: '';
         }
         if (!$api_key) return [false, 'Missing API key', null];
-        $model = 'gemini-3-pro-image-preview';
+        $model = trim(get_option('ppe_api_model', 'gemini-3-pro-image-preview'));
+        if ($model === '') {
+            $model = 'gemini-3-pro-image-preview';
+        }
         $endpoint = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent";
         $parts = [];
         if ($prompt !== '') $parts[] = ['text' => $prompt];

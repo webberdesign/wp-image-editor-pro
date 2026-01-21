@@ -1,0 +1,14 @@
+# Secrets / config
+.env
+config.php
+*.key
+*.token
+
+# Uploads / runtime
+uploads/
+logs/
+error_log
+images/
+
+# OS junk
+.DS_Store

@@ -37,8 +37,8 @@ add_action('init', 'ppe_start_session', 1);
  */
 function ppe_register_admin_page() {
     add_menu_page(
-        __( 'WebberSites Image Editor AI', 'pocket-photo-editor' ), // Page title
-        __( 'WebberSites Image Editor AI', 'pocket-photo-editor' ), // Menu title
+        __( 'WS Image Editor', 'pocket-photo-editor' ), // Page title
+        __( 'WS Image Editor', 'pocket-photo-editor' ), // Menu title
         'upload_files', // Capability
         'webbersites-image-editor-ai', // Menu slug
         'ppe_render_admin_page', // Callback function
@@ -148,7 +148,7 @@ function ppe_render_admin_page() {
     $initial_attachment_id = isset($_GET['attachment_id']) ? intval($_GET['attachment_id']) : 0;
     ?>
     <div class="editor-wrap">
-        <h1><?php esc_html_e( 'WebberSites Image Editor AI', 'pocket-photo-editor' ); ?></h1>
+        <h1><?php esc_html_e( 'WS Image Editor', 'pocket-photo-editor' ); ?></h1>
         <!-- Load Font Awesome for tool icons -->
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
         <!-- Load our customised vanilla ruler script.  This script defines a

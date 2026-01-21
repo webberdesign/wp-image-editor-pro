@@ -1347,7 +1347,12 @@ function ppe_handle_ajax() {
     }
     $db_path = $base_dir . '/db.json';
     // Helper: read DB
-    $db = [ 'versions' => [], 'current_base_path' => null, 'original_path' => null ];
+    $db = [
+        'versions' => [],
+        'current_base_path' => null,
+        'original_path' => null,
+        'original_name' => null,
+    ];
     if (file_exists($db_path)) {
         $json = file_get_contents($db_path);
         $arr = json_decode($json, true);
@@ -1372,6 +1377,17 @@ function ppe_handle_ajax() {
     // Generate a safe filename
     $safe_name = function($prefix, $ext) {
         return $prefix . '_' . date('Ymd_His') . '_' . bin2hex(random_bytes(3)) . '.' . $ext;
+    };
+    $clean_original_name = function($name) {
+        $name = sanitize_file_name($name);
+        if ($name === '') {
+            return 'image';
+        }
+        return $name;
+    };
+    $build_edit_name = function($original_name, $ext) use ($clean_original_name) {
+        $timestamp = current_time('Ymd-His');
+        return $clean_original_name($original_name) . '-edit-' . $timestamp . '.' . $ext;
     };
     // Determine extension from MIME
     $ext_for_mime = function($mime) {
@@ -1407,6 +1423,11 @@ function ppe_handle_ajax() {
     $save_b64 = function($dir, $b64, $mime, $prefix='img') use ($safe_name, $ext_for_mime) {
         $ext = $ext_for_mime($mime);
         $path = trailingslashit($dir) . $safe_name($prefix, $ext);
+        file_put_contents($path, base64_decode($b64));
+        return $path;
+    };
+    $save_b64_named = function($dir, $b64, $mime, $filename) {
+        $path = trailingslashit($dir) . $filename;
         file_put_contents($path, base64_decode($b64));
         return $path;
     };
@@ -1496,6 +1517,7 @@ function ppe_handle_ajax() {
         $mime = mime_content_type($orig_path) ?: 'image/png';
         $ext = $ext_for_mime($mime);
         $dest_path = trailingslashit($base_dir) . $safe_name('orig', $ext);
+        $db['original_name'] = $clean_original_name(pathinfo($orig_path, PATHINFO_FILENAME));
         // Copy the selected image into our session folder
         copy($orig_path, $dest_path);
         // Compute accessible URL for the copy
@@ -1532,6 +1554,7 @@ function ppe_handle_ajax() {
         $tmp = $file['tmp_name'];
         $mime = mime_content_type($tmp) ?: 'application/octet-stream';
         $supported = ['image/jpeg','image/png','image/webp'];
+        $db['original_name'] = $clean_original_name(pathinfo($file['name'] ?? 'image', PATHINFO_FILENAME));
         if (!in_array($mime, $supported, true)) {
             // Save original binary then convert to PNG
             $orig_name = $safe_name('orig', 'bin');
@@ -1581,7 +1604,10 @@ function ppe_handle_ajax() {
         if (!$b64) {
             wp_send_json(['ok'=>0, 'error'=>'No image returned', 'raw'=>$resp]);
         }
-        $out = $save_b64($base_dir, $b64, $mime, 'edit');
+        $ext = $ext_for_mime($mime);
+        $original_name = $db['original_name'] ?? pathinfo($db['original_path'] ?? $base, PATHINFO_FILENAME);
+        $filename = $build_edit_name($original_name, $ext);
+        $out = $save_b64_named($base_dir, $b64, $mime, $filename);
         // Insert into media library
         [$attach_id, $url] = $insert_media($out, $mime);
         $ver = [

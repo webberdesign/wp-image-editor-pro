@@ -71,6 +71,39 @@ function ppe_add_media_row_action($actions, $post, $detached) {
 add_filter('media_row_actions', 'ppe_add_media_row_action', 10, 3);
 
 /**
+ * Add an "Edit Image" link to the featured image area for posts and pages.
+ * The link opens the WS Image Editor with the selected attachment.
+ *
+ * @param string $content Featured image HTML.
+ * @param int $post_id Current post ID.
+ * @return string Modified featured image HTML.
+ */
+function ppe_add_featured_image_edit_link($content, $post_id) {
+    if (!current_user_can('upload_files')) {
+        return $content;
+    }
+
+    $thumbnail_id = get_post_thumbnail_id($post_id);
+    if (!$thumbnail_id) {
+        return $content;
+    }
+
+    $url = add_query_arg([
+        'page' => 'webbersites-image-editor-ai',
+        'attachment_id' => $thumbnail_id,
+    ], admin_url('admin.php'));
+
+    $link = sprintf(
+        '<p class="ppe-featured-edit-link"><a href="%s">%s</a></p>',
+        esc_url($url),
+        esc_html__('Edit Image', 'pocket-photo-editor')
+    );
+
+    return $content . $link;
+}
+add_filter('admin_post_thumbnail_html', 'ppe_add_featured_image_edit_link', 10, 2);
+
+/**
  * Register a settings page under the general Settings menu to allow
  * administrators to enter and store the Gemini API key used by the editor.
  */

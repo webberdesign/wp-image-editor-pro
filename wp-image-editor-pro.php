@@ -91,6 +91,7 @@ function ppe_add_featured_image_edit_link($content, $post_id) {
     $url = add_query_arg([
         'page' => 'webbersites-image-editor-ai',
         'attachment_id' => $thumbnail_id,
+        'source_post_id' => $post_id,
     ], admin_url('admin.php'));
 
     $link = sprintf(
@@ -179,6 +180,14 @@ function ppe_render_admin_page() {
     $ajax_url = admin_url('admin-ajax.php');
     // Determine if an attachment ID was passed via query string for preloading
     $initial_attachment_id = isset($_GET['attachment_id']) ? intval($_GET['attachment_id']) : 0;
+    $source_post_id = isset($_GET['source_post_id']) ? intval($_GET['source_post_id']) : 0;
+    $source_post = null;
+    if ($source_post_id) {
+        $source_post = get_post($source_post_id);
+        if (!$source_post || !current_user_can('edit_post', $source_post_id)) {
+            $source_post = null;
+        }
+    }
     ?>
     <div class="editor-wrap">
         <h1><?php esc_html_e( 'WS Image Editor', 'pocket-photo-editor' ); ?></h1>
@@ -203,6 +212,23 @@ function ppe_render_admin_page() {
                 <div class="grid2" style="display:grid; grid-template-columns:1fr; gap:18px;">
                     <div>
                         <button id="selectImageBtn" class="btn" type="button"><?php esc_html_e( 'Select Image from Media Library', 'pocket-photo-editor' ); ?></button>
+                        <?php if ($source_post) : ?>
+                            <div class="ppe-featured-context">
+                                <?php
+                                printf(
+                                    '<strong>%s</strong> <a href="%s">%s</a>',
+                                    esc_html__('Featured image for:', 'pocket-photo-editor'),
+                                    esc_url(get_edit_post_link($source_post_id, '')),
+                                    esc_html(get_the_title($source_post_id))
+                                );
+                                ?>
+                                <div class="ppe-featured-actions">
+                                    <button id="saveFeaturedBtn" class="btn btn-small" type="button">
+                                        <?php esc_html_e('Save as Featured Image', 'pocket-photo-editor'); ?>
+                                    </button>
+                                </div>
+                            </div>
+                        <?php endif; ?>
                         <div id="uploadMsg" class="help" style="margin-top:10px"></div>
                     </div>
                     <div style="position:relative; display:flex; gap:0; align-items:flex-start;">
@@ -339,6 +365,26 @@ function ppe_render_admin_page() {
     }
     .hRow{ display:flex; justify-content:space-between; align-items:center; gap:10px; }
     .help{font-size:12px; color:var(--muted);} 
+    .ppe-featured-context{
+        margin-top:10px;
+        padding:10px;
+        border:1px solid var(--edge);
+        background:var(--panel);
+        border-radius:1px;
+        font-size:12px;
+        display:flex;
+        flex-direction:column;
+        gap:6px;
+    }
+    .ppe-featured-context a{
+        color:var(--text);
+        text-decoration:underline;
+    }
+    .ppe-featured-actions{
+        display:flex;
+        gap:8px;
+        flex-wrap:wrap;
+    }
     .viewer{
         border:1px solid var(--edge);
         border-radius:1px;
@@ -663,6 +709,7 @@ function ppe_render_admin_page() {
     const topButtons = document.getElementById('topButtons');
     const overlay = document.getElementById('overlay');
     const overlayImg= document.getElementById('overlayImg');
+    const sourcePostId = <?php echo json_encode($source_post ? $source_post_id : 0); ?>;
 
     // Apply the current scale to the viewer image and update ruler spacing
     function applyScale(){
@@ -881,6 +928,31 @@ function ppe_render_admin_page() {
         });
         frame.open();
     });
+    const saveFeaturedBtn = document.getElementById('saveFeaturedBtn');
+    if (saveFeaturedBtn) {
+        saveFeaturedBtn.addEventListener('click', async () => {
+            if (!sourcePostId) {
+                setError('No source post found.');
+                return;
+            }
+            const fd = new FormData();
+            fd.append('subaction', 'set_featured');
+            fd.append('post_id', sourcePostId);
+            if (SELECTED && SELECTED.path) {
+                fd.append('path', SELECTED.path);
+            }
+            try {
+                const resp = await postForm(fd);
+                if (resp.ok) {
+                    uploadMsg.textContent = 'Featured image updated ✓';
+                } else {
+                    setError(resp.error || 'Failed to update featured image');
+                }
+            } catch (err) {
+                setError(err.message || String(err));
+            }
+        });
+    }
     document.getElementById('generateBtn').addEventListener('click', async ()=>{
         const promptVal = document.getElementById('prompt').value.trim(); if (!promptVal){ setError('Enter a prompt'); return; }
         clearError(); showSkeleton(); const fd = new FormData(); fd.append('subaction','edit'); fd.append('prompt', promptVal);
@@ -1563,6 +1635,7 @@ function ppe_handle_ajax() {
             'type' => 'original',
             'path' => $dest_path,
             'url' => $dest_url,
+            'attachment_id' => $attach_id,
             'prompt' => null,
             'base' => null,
             'usage' => null
@@ -1852,6 +1925,34 @@ function ppe_handle_ajax() {
         $db['current_base_path'] = $path;
         $save_db();
         wp_send_json(['ok'=>1, 'current_base'=>$path]);
+    }
+
+    if ($subaction === 'set_featured') {
+        $post_id = intval($_POST['post_id'] ?? 0);
+        if (!$post_id || !current_user_can('edit_post', $post_id)) {
+            wp_send_json(['ok' => 0, 'error' => 'Invalid post']);
+        }
+        $path = $_POST['path'] ?? '';
+        if (!$path) {
+            $path = $db['current_base_path'] ?? '';
+        }
+        if (!$path) {
+            wp_send_json(['ok' => 0, 'error' => 'No image selected']);
+        }
+        $attachment_id = null;
+        foreach ($db['versions'] as $version) {
+            if (($version['path'] ?? '') === $path) {
+                $attachment_id = intval($version['attachment_id'] ?? 0);
+                break;
+            }
+        }
+        if (!$attachment_id) {
+            wp_send_json(['ok' => 0, 'error' => 'Unable to locate attachment for this version']);
+        }
+        if (!set_post_thumbnail($post_id, $attachment_id)) {
+            wp_send_json(['ok' => 0, 'error' => 'Failed to set featured image']);
+        }
+        wp_send_json(['ok' => 1]);
     }
 
     // Delete action: permanently remove a version and its attachment
